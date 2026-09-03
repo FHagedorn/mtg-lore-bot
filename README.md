@@ -1,59 +1,114 @@
-# MTG Story Discord Bot
+# MTG Lore Bot
 
-Prüft https://magic.wizards.com/en/story auf neue Story-Episoden und postet sie
-in deinen Discord-Channel: ein hübsches Embed mit Bild + Teaser, und der komplette
-Story-Text landet gut lesbar in einem Thread darunter – inklusive aller
-Story-Artworks und Kartenvorschauen (via Scryfall) an der richtigen Stelle im Text.
+Ein Discord-Bot, der https://magic.wizards.com/en/story auf neue Story-Episoden
+prüft und sie komplett in einen Textchannel postet: Titel-Embed mit Cover-Bild
+und Teaser, der volle Story-Text in schön formatierten Blöcken, Story-Artworks
+und Kartenvorschauen (via Scryfall) genau an der Stelle, wo sie in der
+Original-Story stehen.
 
-**Prüf-Rhythmus:** normal alle 30 Minuten, aber täglich zwischen 16:55 und 18:00 Uhr
-(übliche Release-Zeit) jede Minute. Anpassbar oben in `bot.py`
-(`FAST_WINDOW_START` / `FAST_WINDOW_END` / `NORMAL_INTERVAL_MINUTES`).
+**Prüf-Rhythmus:** normal alle 30 Minuten, täglich zwischen 16:55 und 18:00 Uhr
+deutscher Zeit (übliche Release-Zeit) jede Minute. Anpassbar oben in `bot.py`.
 
-## Checkliste (einmalig)
+**Slash-Commands:** `/teststory` postet die neueste Episode sofort (zum Testen),
+`/storycheck` prüft sofort auf neue Episoden.
 
-1. **Bot erstellen:** https://discord.com/developers/applications → "New Application" → Name vergeben
-2. Links auf **"Bot"** klicken → **"Reset Token"** → Token kopieren
-3. Token in `config.json` bei `discord_token` eintragen
-4. **Bot einladen:** Links auf "OAuth2" → "URL Generator" → Haken bei `bot` und `applications.commands`
-   → unten bei Bot Permissions: `Send Messages`, `Embed Links`, `Create Public Threads`, `Send Messages in Threads`
-   → generierte URL öffnen und Bot auf deinen Server einladen
-5. **Channel-ID holen:** In Discord unter Einstellungen → Erweitert → "Entwicklermodus" aktivieren,
-   dann Rechtsklick auf den Ziel-Channel → "ID kopieren" → in `config.json` bei `channel_id` eintragen
-6. Doppelklick auf `start.bat` (oder `python bot.py` im Terminal)
+---
 
-## Testen
+## Was man immer braucht: einen Bot-Token + Channel-ID
 
-- `/teststory` im Discord eingeben → postet die neueste Story sofort (auch wenn schon gesehen)
-- `/storycheck` → prüft sofort auf neue Stories
+Der Token ist der „Schlüssel" zu einem Discord-Bot-Account. Er steckt **nicht**
+im Code und **nicht** im Docker-Image – man gibt ihn erst beim Starten an.
+Jeder kann sich kostenlos einen eigenen Bot erstellen:
 
-## Mit Docker laufen lassen (z. B. auf einem Server)
+1. https://discord.com/developers/applications → **New Application** → Name vergeben
+2. Links auf **Bot** → **Reset Token** → Token kopieren (gut aufheben, niemandem zeigen!)
+3. Einladen: **OAuth2 → URL Generator** → Haken bei `bot` + `applications.commands`,
+   Permissions: *Send Messages* und *Embed Links* → generierte URL öffnen → Server auswählen
+4. Channel-ID: In Discord den Entwicklermodus aktivieren (Einstellungen → Erweitert),
+   dann Rechtsklick auf den Ziel-Channel → **ID kopieren**
 
-Das GitHub-Actions-Workflow in `.github/workflows/docker.yml` baut bei jedem Push
-auf `main` automatisch ein Image und veröffentlicht es auf GHCR.
+> ⚠️ Den Token niemals committen oder in einen Discord-Channel posten –
+> Discord macht öffentlich gepostete Tokens automatisch ungültig.
 
-**Image pullen und starten:**
+---
 
-```bash
-docker pull ghcr.io/BESITZER/mtg-story-bot:latest
+## Variante A: Direkt mit Python starten (z. B. auf dem eigenen PC)
+
+```
+pip install -r requirements.txt
 ```
 
-Dann eine `.env`-Datei anlegen (siehe `.env.example`) mit `DISCORD_TOKEN` und
-`CHANNEL_ID`, dazu die `docker-compose.yml` aus diesem Repo, und:
+Dann `config.json` anlegen (oder die vorhandene bearbeiten):
 
-```bash
-docker compose up -d
+```json
+{
+  "discord_token": "DEIN_TOKEN",
+  "channel_id": "DEINE_CHANNEL_ID"
+}
 ```
 
-(In der `docker-compose.yml` dafür die `build: .`-Zeile durch
-`image: ghcr.io/BESITZER/mtg-story-bot:latest` ersetzen.)
+Starten mit `python bot.py` (Windows: Doppelklick auf `start.bat`).
 
-Logs anschauen: `docker logs -f mtg-story-bot` ·
-Der Merkzustand (`seen.json`) liegt im Ordner `./data` neben der Compose-Datei.
+## Variante B: Als Docker-Container (empfohlen für Server)
 
-## Wichtig zu wissen
+### Woher kommt das Image?
 
-- **Beim allerersten Start** werden alle aktuell vorhandenen Stories nur als "gelesen" markiert
-  (damit der Channel nicht zugespammt wird). Ab dann wird jede neue Episode automatisch gepostet.
-- Gemerkte Stories stehen in `seen.json` – Datei löschen = alles gilt wieder als neu.
-- Der Bot muss laufen, damit er posten kann (Fenster offen lassen oder auf einem Server/Raspberry Pi laufen lassen).
-- Prüf-Intervall ändern: `CHECK_INTERVAL_MINUTES` oben in `bot.py`.
+Das baut GitHub automatisch: Der Workflow in
+[`.github/workflows/docker.yml`](.github/workflows/docker.yml) läuft bei jedem
+Push auf `main`, baut das Docker-Image und veröffentlicht es kostenlos in der
+GitHub Container Registry (GHCR). Man muss nichts selbst bauen – einfach pullen:
+
+```
+docker pull ghcr.io/fhagedorn/mtg-lore-bot:latest
+```
+
+(Fortschritt der Builds: Tab **Actions** in diesem Repo.)
+
+### Starten
+
+1. Einen Ordner auf dem Server anlegen und die
+   [`docker-compose.yml`](docker-compose.yml) aus diesem Repo hineinlegen.
+   Darin die Zeile `build: .` durch das fertige Image ersetzen:
+
+   ```yaml
+   image: ghcr.io/fhagedorn/mtg-lore-bot:latest
+   ```
+
+2. Im selben Ordner eine Datei `.env` anlegen – **hier kommt der Token rein**:
+
+   ```
+   DISCORD_TOKEN=DEIN_TOKEN
+   CHANNEL_ID=DEINE_CHANNEL_ID
+   ```
+
+3. Starten:
+
+   ```
+   docker compose up -d
+   ```
+
+Das war's. `restart: unless-stopped` sorgt dafür, dass der Bot auch nach einem
+Server-Neustart automatisch wieder läuft.
+
+**Nützliche Befehle:**
+
+| Befehl | Zweck |
+|---|---|
+| `docker logs -f mtg-story-bot` | Live-Logs anschauen |
+| `docker compose pull && docker compose up -d` | Auf neueste Version updaten |
+| `docker compose down` | Bot stoppen |
+
+Der Merkzustand (welche Stories schon gepostet wurden) liegt im Unterordner
+`./data` und überlebt Updates und Neustarts.
+
+---
+
+## Gut zu wissen
+
+- **Beim allerersten Start** werden alle aktuell vorhandenen Stories nur als
+  „gelesen" markiert (kein Spam). Ab dann wird jede neue Episode automatisch gepostet.
+- **Nur eine Instanz gleichzeitig** laufen lassen – sonst wird doppelt gepostet.
+- `data/seen.json` löschen = Bot vergisst alles und postet beim nächsten Check
+  alle Episoden der Seite neu.
+- Wie der Bot Neues erkennt: Er vergleicht die Story-Links auf der Seite mit
+  seiner Merkliste – jeder unbekannte Link gilt als neue Story.
