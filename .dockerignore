@@ -1,0 +1,8 @@
+# Niemals Secrets oder lokalen Zustand ins Image backen!
+config.json
+seen.json
+.env
+__pycache__/
+start.bat
+README.md
+docker-compose.yml

@@ -1,0 +1,12 @@
+services:
+  mtg-story-bot:
+    build: .
+    # Alternativ statt "build": ein gepulltes/geladenes Image verwenden:
+    # image: mtg-story-bot:latest
+    container_name: mtg-story-bot
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      CHANNEL_ID: ${CHANNEL_ID}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

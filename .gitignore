@@ -1,0 +1,6 @@
+# Secrets & lokaler Zustand – niemals committen!
+config.json
+.env
+seen.json
+data/
+__pycache__/
