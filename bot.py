@@ -26,8 +26,12 @@ CONFIG_FILE = BASE_DIR / "config.json"
 DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR))
 SEEN_FILE = DATA_DIR / "seen.json"
 
-STORY_HUB_URL = "https://magic.wizards.com/en/story"
 BASE_URL = "https://magic.wizards.com"
+# Das News-Archiv ist die zuverlässigste Quelle: Es listet neue Episoden sofort
+# (die Story-Hub-Seite hängt manchmal hinterher) und lässt sich per Kategorie
+# fein filtern (z. B. magic-story, announcements, feature, making-magic).
+ARCHIVE_CATEGORY = os.environ.get("STORY_CATEGORY", "magic-story")
+ARCHIVE_URL = f"{BASE_URL}/en/news/archive?category={ARCHIVE_CATEGORY}&page=1"
 
 # Normal wird alle 30 Minuten geprüft. Im Release-Fenster (Stories kommen
 # ca. 17:00 Uhr raus) wird jede Minute geprüft. Zeiten = deutsche Zeit,
@@ -73,9 +77,9 @@ async def fetch_html(session: aiohttp.ClientSession, url: str) -> str:
 
 
 async def get_story_links(session: aiohttp.ClientSession) -> list[str]:
-    """Liefert alle Story-Artikel-URLs der Hub-Seite (neueste Reihenfolge wie auf der Seite)."""
-    html = await fetch_html(session, STORY_HUB_URL)
-    links = re.findall(r'href="(/en/news/magic-story/[^"]+)"', html)
+    """Liefert die Story-Artikel-URLs aus dem News-Archiv, neueste zuerst."""
+    html = await fetch_html(session, ARCHIVE_URL)
+    links = re.findall(rf'href="(/en/news/{re.escape(ARCHIVE_CATEGORY)}/[^"]+)"', html)
     result = []
     for link in links:
         url = BASE_URL + link
@@ -293,7 +297,7 @@ async def check_for_new_stories() -> str:
 
         new_links = [l for l in links if l not in seen]
         posted = 0
-        for url in new_links:  # Seitenreihenfolge = älteste zuerst
+        for url in reversed(new_links):  # Archiv listet neueste zuerst → umdrehen
             html = await fetch_html(session, url)
             article = parse_article(html, url)
             await post_story(ch, article, session)
@@ -310,7 +314,7 @@ async def post_latest_story(channel: discord.abc.Messageable) -> str:
         links = await get_story_links(session)
         if not links:
             return "Keine Story-Links auf der Seite gefunden."
-        url = links[-1]  # Seite listet von alt nach neu → letzter Link = neueste
+        url = links[0]  # Archiv listet neueste zuerst
         article = parse_article(await fetch_html(session, url), url)
         await post_story(channel, article, session)
         seen = load_seen()
