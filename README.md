@@ -1,10 +1,10 @@
 # MTG Lore Bot
 
 Ein Discord-Bot, der https://magic.wizards.com/en/story auf neue Story-Episoden
-prüft und sie komplett in einen Textchannel postet: Titel-Embed mit Cover-Bild
-und Teaser, der volle Story-Text in schön formatierten Blöcken, Story-Artworks
-und Kartenvorschauen (via Scryfall) genau an der Stelle, wo sie in der
-Original-Story stehen.
+prüft und in einen Textchannel postet: Titel-Embed mit Cover-Bild und Teaser im
+Channel, darunter ein Thread mit der kompletten Story – der volle Text in schön
+formatierten Blöcken, Story-Artworks und Kartenvorschauen (via Scryfall) genau
+an der Stelle, wo sie in der Original-Story stehen.
 
 **Prüf-Rhythmus:** normal alle 30 Minuten, täglich zwischen 16:55 und 18:00 Uhr
 deutscher Zeit (übliche Release-Zeit) jede Minute. Anpassbar oben in `bot.py`.

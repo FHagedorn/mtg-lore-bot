@@ -219,9 +219,9 @@ STORY_COLOR = discord.Color.from_str("#f5a623")
 
 async def post_story(channel: discord.TextChannel, article: dict,
                      session: aiohttp.ClientSession) -> None:
-    """Postet die komplette Story schön formatiert direkt in den Channel:
-    Titel-Embed, dann Text-Blöcke, Story-Artworks und Kartenvorschauen
-    in der Original-Reihenfolge."""
+    """Postet das Titel-Embed in den Channel und die komplette Story
+    (Text-Blöcke, Story-Artworks, Kartenvorschauen in Original-Reihenfolge)
+    in einen Thread darunter."""
     header = discord.Embed(
         title=f"📖 {article['title']}",
         description=f"*{article['description']}*" if article["description"] else None,
@@ -231,10 +231,18 @@ async def post_story(channel: discord.TextChannel, article: dict,
     if article["image"]:
         header.set_image(url=article["image"])
     header.set_author(name="Magic: The Gathering – Neue Story!")
-    await channel.send(embed=header)
+    header_msg = await channel.send(embed=header)
 
     if not article["text"]:
         return
+
+    # Kompletter Inhalt in einen Thread, damit der Channel übersichtlich bleibt
+    try:
+        channel = await header_msg.create_thread(
+            name=article["title"][:100], auto_archive_duration=10080
+        )
+    except discord.HTTPException as e:
+        print(f"[Post] Thread konnte nicht erstellt werden ({e}), poste in den Channel.")
 
     # Text an Bild-Platzhaltern in Segmente teilen: Text, Bild, Text, ...
     segments = IMG_RE.split(article["text"])  # ungerade Indizes = Bild-URLs
