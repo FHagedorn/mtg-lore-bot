@@ -76,8 +76,53 @@ async def fetch_html(session: aiohttp.ClientSession, url: str) -> str:
         return await resp.text()
 
 
-async def get_story_links(session: aiohttp.ClientSession) -> list[str]:
-    """Liefert die Story-Artikel-URLs aus dem News-Archiv, neueste zuerst."""
+# --- Primäre Quelle: Contentful-API (das CMS hinter magic.wizards.com) -------
+# Die Seite bettet einen öffentlichen Read-Only-Token in ihr JavaScript ein.
+# Damit lässt sich die Artikel-Datenbank direkt als JSON abfragen – sortiert
+# nach Veröffentlichungsdatum und fein filterbar. (Danke an den Kumpel!)
+
+_ctf_cache: dict[str, str] = {}
+
+
+async def _get_ctf_credentials(session: aiohttp.ClientSession) -> tuple[str, str]:
+    """Extrahiert Contentful-Token und Space-ID aus dem JavaScript der Seite."""
+    if "token" in _ctf_cache:
+        return _ctf_cache["token"], _ctf_cache["space"]
+    html = await fetch_html(session, f"{BASE_URL}/en/news/magic-story")
+    scripts = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, re.I)
+    js = await fetch_html(session, BASE_URL + scripts[-1])
+    token = re.search(r'CTF_ACCESS_TOKEN:\s*"([^"]+)"', js)
+    space = re.search(r'CTF_ID:\s*"([^"]+)"', js)
+    if not token or not space:
+        raise RuntimeError("CTF_ACCESS_TOKEN/CTF_ID nicht im Seiten-JS gefunden")
+    _ctf_cache["token"], _ctf_cache["space"] = token.group(1), space.group(1)
+    return _ctf_cache["token"], _ctf_cache["space"]
+
+
+async def _get_links_from_contentful(session: aiohttp.ClientSession) -> list[str]:
+    token, space = await _get_ctf_credentials(session)
+    params = {
+        "content_type": "article",
+        "locale": "en",
+        "order": "-fields.publishedDateTime",
+        "fields.category": ARCHIVE_CATEGORY,
+        "limit": "10",
+        "select": "fields.slug",
+    }
+    url = f"https://cdn.contentful.com/spaces/{space}/environments/master/entries"
+    async with session.get(url, params=params,
+                           headers={"Authorization": f"Bearer {token}", **HEADERS}) as resp:
+        if resp.status in (401, 403):
+            _ctf_cache.clear()  # Token wurde rotiert → beim nächsten Mal neu holen
+        resp.raise_for_status()
+        data = await resp.json()
+    # Das JSON liefert nur den Slug – die volle URL bauen wir selbst zusammen
+    return [f"{BASE_URL}/en/news/{ARCHIVE_CATEGORY}/{item['fields']['slug']}"
+            for item in data["items"]]
+
+
+async def _get_links_from_archive(session: aiohttp.ClientSession) -> list[str]:
+    """Fallback: Story-Links aus dem HTML des News-Archivs kratzen."""
     html = await fetch_html(session, ARCHIVE_URL)
     links = re.findall(rf'href="(/en/news/{re.escape(ARCHIVE_CATEGORY)}/[^"]+)"', html)
     result = []
@@ -86,6 +131,15 @@ async def get_story_links(session: aiohttp.ClientSession) -> list[str]:
         if url not in result:
             result.append(url)
     return result
+
+
+async def get_story_links(session: aiohttp.ClientSession) -> list[str]:
+    """Liefert die Story-Artikel-URLs, neueste zuerst."""
+    try:
+        return await _get_links_from_contentful(session)
+    except Exception as e:
+        print(f"[Quelle] Contentful-API nicht erreichbar ({e!r}) – nutze Archiv-HTML.")
+        return await _get_links_from_archive(session)
 
 
 # Platzhalter, die beim Posten in echte Bilder aufgelöst werden
