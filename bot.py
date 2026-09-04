@@ -310,12 +310,12 @@ async def post_story(channel: discord.TextChannel, article: dict,
             art_embed.set_image(url=segment)
             await channel.send(embed=art_embed)
             continue
-        for chunk in chunk_text(segment.strip(), limit=4000):
+        for chunk in chunk_text(segment.strip()):
             card_names = list(dict.fromkeys(CARD_RE.findall(chunk)))
             chunk = CARD_RE.sub("", chunk).strip()
             if chunk:
-                await channel.send(embed=discord.Embed(description=chunk,
-                                                       color=STORY_COLOR))
+                # Text als normale Nachricht (lesbarer als Embed-Kästen)
+                await channel.send(chunk)
             # Kartenvorschau(en) direkt nach dem Abschnitt posten
             for name in card_names:
                 img = await get_card_image(session, name)
@@ -325,11 +325,8 @@ async def post_story(channel: discord.TextChannel, article: dict,
                     card_embed.set_footer(text=f"🃏 {name}")
                     await channel.send(embed=card_embed)
 
-    outro = discord.Embed(
-        description=f"✨ *Ende der Episode* – [Auf der Website lesen]({article['url']})",
-        color=STORY_COLOR,
-    )
-    await channel.send(embed=outro)
+    # <URL> unterdrückt die automatische Link-Vorschau
+    await channel.send(f"✨ *Ende der Episode* – Original: <{article['url']}>")
 
 
 async def check_for_new_stories() -> str:
