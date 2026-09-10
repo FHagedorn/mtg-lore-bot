@@ -144,7 +144,7 @@ async def get_story_links(session: aiohttp.ClientSession) -> list[str]:
 
 # Platzhalter, die beim Posten in echte Bilder aufgelöst werden
 IMG_MARKER = "@@IMG@@{url}@@END@@"
-CARD_MARKER = "@@CARD@@{name}@@END@@"
+CARD_MARKER = "@@CARD@@{id}|{name}@@END@@"  # id = Contentful-Entry-ID der Karte
 IMG_RE = re.compile(r"@@IMG@@(.*?)@@END@@")
 CARD_RE = re.compile(r"@@CARD@@(.*?)@@END@@")
 
@@ -167,7 +167,8 @@ def _node_to_markdown(node) -> str:
 
     if node.name == "auto-card":
         name = inner.strip()
-        return f"**{name}**{CARD_MARKER.format(name=name)}" if name else ""
+        entry_id = node.get("entry", "")
+        return f"**{name}**{CARD_MARKER.format(id=entry_id, name=name)}" if name else ""
     if node.name == "figure":
         return inner
 
@@ -252,23 +253,43 @@ tree = discord.app_commands.CommandTree(client)
 _card_image_cache: dict[str, str | None] = {}
 
 
-async def get_card_image(session: aiohttp.ClientSession, name: str) -> str | None:
-    """Holt das Kartenbild über die Scryfall-API (mit Cache)."""
-    if name in _card_image_cache:
-        return _card_image_cache[name]
+async def get_card_image(session: aiohttp.ClientSession,
+                         entry_id: str, name: str) -> str | None:
+    """Holt das offizielle Kartenbild von Wizards (Contentful-Entry der Karte).
+    Fallback: Scryfall – falls der Entry mal kein Bild hat. (Mit Cache.)"""
+    key = entry_id or name
+    if key in _card_image_cache:
+        return _card_image_cache[key]
+
     url = None
-    try:
-        async with session.get("https://api.scryfall.com/cards/named",
-                               params={"fuzzy": name}, headers=HEADERS) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                if "image_uris" in data:
-                    url = data["image_uris"].get("normal")
-                elif data.get("card_faces"):
-                    url = data["card_faces"][0].get("image_uris", {}).get("normal")
-    except Exception as e:
-        print(f"[Scryfall] Fehler bei '{name}': {e!r}")
-    _card_image_cache[name] = url
+    if entry_id:
+        try:
+            token, space = await _get_ctf_credentials(session)
+            api = f"https://cdn.contentful.com/spaces/{space}/environments/master/entries/{entry_id}"
+            async with session.get(api, headers={"Authorization": f"Bearer {token}",
+                                                 **HEADERS}) as resp:
+                if resp.status in (401, 403):
+                    _ctf_cache.clear()
+                if resp.status == 200:
+                    data = await resp.json()
+                    url = data.get("fields", {}).get("face")
+        except Exception as e:
+            print(f"[Karte] Contentful-Fehler bei '{name}': {e!r}")
+
+    if not url and name:  # Fallback: Scryfall
+        try:
+            async with session.get("https://api.scryfall.com/cards/named",
+                                   params={"fuzzy": name}, headers=HEADERS) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if "image_uris" in data:
+                        url = data["image_uris"].get("normal")
+                    elif data.get("card_faces"):
+                        url = data["card_faces"][0].get("image_uris", {}).get("normal")
+        except Exception as e:
+            print(f"[Karte] Scryfall-Fehler bei '{name}': {e!r}")
+
+    _card_image_cache[key] = url
     return url
 
 
@@ -317,8 +338,9 @@ async def post_story(channel: discord.TextChannel, article: dict,
                 # Text als normale Nachricht (lesbarer als Embed-Kästen)
                 await channel.send(chunk)
             # Kartenvorschau(en) direkt nach dem Abschnitt posten
-            for name in card_names:
-                img = await get_card_image(session, name)
+            for marker in card_names:
+                entry_id, _, name = marker.partition("|")
+                img = await get_card_image(session, entry_id, name)
                 if img:
                     card_embed = discord.Embed(color=STORY_COLOR)
                     card_embed.set_image(url=img)
